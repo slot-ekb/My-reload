@@ -38,14 +38,26 @@ stats='{"total_khs":0,"khs":0,"hs_units":"hs","hs":[0],"temp":[0],"fan":[0],"upt
 strip_ansi() { sed -E 's/\x1b\[[0-9;]*m//g'; }
 
 if [[ -r "$LOGFILE" ]] && command -v jq >/dev/null 2>&1; then
+    # "nps" only exists in the pool-mode telemetry line matador sends to a pool
+    # ([stratum] worker.report_metrics) -- solo mode never emits it at all, so
+    # relying on it alone leaves solo with no hashrate ever (confirmed live).
+    # [stats-all]'s own "ep/s=" is logged in BOTH modes (it's rig-level
+    # telemetry, not pool-specific), so it's the fallback: ep/s * 100 feeds
+    # the same "/100" step below that nps already needs, keeping one code path
+    # for both sources instead of duplicating the display math per-source.
     last_nps_line=$(strip_ansi < "$LOGFILE" | grep -a 'worker.report_metrics sent:' | tail -1)
     total_nps=$(grep -oE 'nps=[0-9.]+' <<< "$last_nps_line" | head -1 | cut -d= -f2)
-    total_nps="${total_nps:-0}"
 
     last_stats_line=$(strip_ansi < "$LOGFILE" | grep -a '\[stats-all\]' | tail -1)
     acc=$(grep -oE 'acc=[0-9]+' <<< "$last_stats_line" | cut -d= -f2)
     rej=$(grep -oE 'rej=[0-9]+' <<< "$last_stats_line" | cut -d= -f2)
     acc="${acc:-0}"; rej="${rej:-0}"
+
+    if [[ -z "$total_nps" ]]; then
+        eps=$(grep -oE 'ep/s=[0-9.]+' <<< "$last_stats_line" | head -1 | cut -d= -f2)
+        total_nps=$(awk -v e="${eps:-0}" 'BEGIN{printf "%.3f", e*100}')
+    fi
+    total_nps="${total_nps:-0}"
 
     # uptime + version aren't in the log lines -- one cheap call to the first
     # port's /summary for those two fields only (not the whole aggregation
