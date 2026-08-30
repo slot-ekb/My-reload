@@ -1,14 +1,18 @@
 #!/bin/bash
-# Обновление epic-miner: фикс сортировки рёбер cuckoo-решения перед submit
+# Обновление epic-miner на ВСЕХ паках в /opt: фикс сортировки рёбер cuckoo перед submit
 # (лечит реджекты "edges not ascending" = потерянные блоки). glibc 2.28 -> 20.04 и 22.04.
 URL="https://raw.githubusercontent.com/slot-ekb/My-reload/main/epic-miner"
 EXPECT="74a0b332de737bec005d00696e2fb7cc"
-D=$(dirname "$(find /opt -name epic-miner -type f 2>/dev/null | head -1)")
-[ -z "$D" ] && { echo "НЕ НАЙДЕН epic-miner в /opt"; exit 1; }
-echo "пак: $D"
+curl -sL -o /tmp/em "$URL" || { echo "НЕ СКАЧАЛОСЬ"; exit 1; }
+GOT=$(md5sum /tmp/em | cut -d' ' -f1)
+[ "$GOT" = "$EXPECT" ] || { echo "БИТАЯ ЗАКАЧКА ($GOT), повтори"; exit 1; }
+echo "скачан новый бинарник ($GOT)"
 pkill -f epic-miner
-cp "$D/epic-miner" "$D/epic-miner.bak.$(date +%s)" && echo "бэкап сделан"
-curl -sL -o "$D/epic-miner" "$URL" && chmod +x "$D/epic-miner"
-GOT=$(md5sum "$D/epic-miner" | cut -d' ' -f1)
-echo "md5: $GOT"
-[ "$GOT" = "$EXPECT" ] && echo "OK — заменился, запускай майнер" || echo "ВНИМАНИЕ: md5 не совпал, качни ещё раз"
+n=0
+for f in $(find /opt -name epic-miner -type f 2>/dev/null); do
+  [ -f "$f.orig" ] || cp "$f" "$f.orig"      # сохраняем исходный один раз (для отката)
+  cp /tmp/em "$f" && chmod +x "$f" && n=$((n+1))
+done
+echo "обновлено паков: $n"
+echo "=== проверка (у всех должно быть $EXPECT) ==="
+find /opt -name epic-miner -type f -exec md5sum {} \;
