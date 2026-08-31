@@ -17,6 +17,7 @@ workers = set()          # downstream writers
 latest_params = None     # последняя JobTemplate (dict)
 node_writer = None
 dbgn = 0
+submits = 0
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
@@ -84,6 +85,8 @@ async def handle_worker(r, w):
                     w.write((json.dumps({"id": mid, "jsonrpc": "2.0", "method": "getjobtemplate", "result": latest_params, "error": None}) + "\n").encode())
                     await w.drain()
             elif m == "submit":
+                global submits
+                submits += 1
                 if node_writer is not None:
                     try:
                         node_writer.write(line); await node_writer.drain()
@@ -107,8 +110,14 @@ async def handle_worker(r, w):
         try: w.close()
         except Exception: pass
 
+async def stats_loop():
+    while True:
+        await asyncio.sleep(3)
+        log(f"СТАТ submits={submits} workers={len(workers)}")
+
 async def main():
     asyncio.create_task(node_link())
+    asyncio.create_task(stats_loop())
     srv = await asyncio.start_server(handle_worker, "0.0.0.0", LISTEN_PORT)
     log(f"ПРОКСИ: воркеры -> :{LISTEN_PORT} | нода -> {NODE_HOST}:{NODE_PORT}")
     async with srv:
