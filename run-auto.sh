@@ -4,6 +4,7 @@
 # включает huge pages. Ничего вручную настраивать не надо на разных машинах.
 cd "$(dirname "$0")"; BASE="$(pwd)"; . ./config.env
 export LD_LIBRARY_PATH="$BASE/lib:$LD_LIBRARY_PATH"
+STRATUM="${STRAT_OVERRIDE:-$STRATUM}"   # тест может направить на фейк
 NTH=${NTHREADS:-1}
 
 # --- huge pages (best-effort, для memory-bound mean-солвера) ---
