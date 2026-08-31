@@ -4,7 +4,8 @@
 # Воркерам отвечает сам (diff=1, ack локально), наверх шлёт их submit'ы.
 # Запуск: python3 epic_proxy.py <НОДА_HOST:PORT> <LISTEN_PORT> [debug]
 #   пример: python3 epic_proxy.py 212.220.216.27:3416 3400
-import asyncio, json, sys, time
+import asyncio, json, sys, time, socket
+HOSTNAME = socket.gethostname()
 
 arg = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1:3416"
 NODE_HOST = arg.split(":")[0]
@@ -37,7 +38,7 @@ async def node_link():
             r, w = await asyncio.open_connection(NODE_HOST, NODE_PORT)
             node_writer = w
             w.write((json.dumps({"id": "0", "jsonrpc": "2.0", "method": "login",
-                                 "params": {"login": "", "pass": "", "agent": "epic-proxy"}}) + "\n").encode())
+                                 "params": {"login": HOSTNAME, "pass": "", "agent": "epic-proxy"}}) + "\n").encode())
             w.write((json.dumps({"id": "0", "jsonrpc": "2.0", "method": "getjobtemplate", "params": None}) + "\n").encode())
             await w.drain()
             log(f"нода подключена {NODE_HOST}:{NODE_PORT}")
