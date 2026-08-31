@@ -67,7 +67,7 @@ plugin_name = "cuckatoo_mean_cpu_avx2_19"
 nthreads = $NTH
 TOML
   screen -S "ecpu$w" -X quit >/dev/null 2>&1
-  if [ "$HAVE_NUMACTL" = "1" ] && [ "$NODES" -gt 1 ]; then
+  if [ "$HAVE_NUMACTL" = "1" ] && [ "$NODES" -gt 1 ] && [ "${NUMA:-1}" = "1" ]; then
     BIND="numactl --membind=$node --physcpubind=$cpu"
   else
     BIND="taskset -c $cpu"
