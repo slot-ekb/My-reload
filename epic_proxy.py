@@ -90,8 +90,14 @@ async def handle_worker(r, w):
                         pass
                 w.write((json.dumps({"id": mid, "jsonrpc": "2.0", "method": "submit", "result": "ok", "error": None}) + "\n").encode())
                 await w.drain()
-            elif m in ("keepalive", "status"):
-                w.write((json.dumps({"id": mid, "jsonrpc": "2.0", "method": m, "result": "ok", "error": None}) + "\n").encode())
+            elif m == "status":
+                h = latest_params.get("height", 0) if isinstance(latest_params, dict) else 0
+                w.write((json.dumps({"id": mid, "jsonrpc": "2.0", "method": "status",
+                                     "result": {"id": "0", "height": h, "difficulty": 1,
+                                                "accepted": 0, "rejected": 0, "stale": 0}, "error": None}) + "\n").encode())
+                await w.drain()
+            elif m == "keepalive":
+                w.write((json.dumps({"id": mid, "jsonrpc": "2.0", "method": "keepalive", "result": "ok", "error": None}) + "\n").encode())
                 await w.drain()
     except Exception:
         pass
