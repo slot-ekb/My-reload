@@ -81,6 +81,12 @@ KEEP = {"3.133.157.114:3414", "212.95.62.131:3434", "57.128.208.109:3414",
 
 def cmd_connect(addr): print(api(f"/v1/peers/{addr}/connect", "POST").get("__err", "ok"))
 
+def cmd_raw():
+    import json
+    d = api("/v1/peers/connected")
+    one = d[0] if isinstance(d, list) and d else d
+    print(json.dumps(one, indent=1, ensure_ascii=False))
+
 def _ago(ts):
     import time
     if not ts: return "?"
@@ -125,6 +131,7 @@ def cmd_watch(n=5, iv=15):
 
 c = sys.argv[1] if len(sys.argv) > 1 else "list"
 if c == "scan": cmd_scan()
+elif c == "raw": cmd_raw()
 elif c == "banned": cmd_banned()
 elif c == "unbanall": cmd_unbanall()
 elif c == "connect": cmd_connect(sys.argv[2])
