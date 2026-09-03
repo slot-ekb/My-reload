@@ -73,8 +73,21 @@ def cmd_scan():
     for p in peers:
         a = p.get("addr", "?"); f = p.get("flags", ""); print(f"  {a:24s} {f}")
 
+def cmd_watch(n=5, iv=15):
+    import time
+    print(f"AUTO: баню отставших > {n} блоков каждые {iv}с (Ctrl+C стоп)", flush=True)
+    while True:
+        t = tip(); peers = connected(); nb = 0
+        for p in peers:
+            lag = t - p.get("height", 0)
+            if lag > n:
+                api(f"/v1/peers/{p.get('addr')}/ban", "POST"); nb += 1
+        print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} забанено_отставших={nb}", flush=True)
+        time.sleep(iv)
+
 c = sys.argv[1] if len(sys.argv) > 1 else "list"
 if c == "scan": cmd_scan()
+elif c == "watch": cmd_watch(int(sys.argv[2]) if len(sys.argv) > 2 else 5, int(sys.argv[3]) if len(sys.argv) > 3 else 15)
 elif c == "list": cmd_list()
 elif c == "clean": cmd_clean(int(sys.argv[2]) if len(sys.argv) > 2 else 50)
 elif c == "ban": cmd_ban(sys.argv[2])
