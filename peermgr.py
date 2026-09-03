@@ -81,6 +81,29 @@ KEEP = {"3.133.157.114:3414", "212.95.62.131:3434", "57.128.208.109:3414",
 
 def cmd_connect(addr): print(api(f"/v1/peers/{addr}/connect", "POST").get("__err", "ok"))
 
+def _ago(ts):
+    import time
+    if not ts: return "?"
+    s = ts / 1000 if ts > 1e12 else ts        # мс или сек
+    d = int(time.time() - s)
+    if d < 0 or d > 10**9: return "?"
+    return f"{d//60}м{d%60}с назад" if d < 3600 else f"{d//3600}ч{(d%3600)//60}м назад"
+
+def cmd_banned():
+    d = api("/v1/peers/all"); peers = d if isinstance(d, list) else []
+    b = [p for p in peers if p.get("flags") == "Banned"]
+    print(f"забанено: {len(b)}")
+    for p in b:
+        print(f"  {p.get('addr','?'):24s} забанен: {_ago(p.get('last_banned',0))}  посл.связь: {_ago(p.get('last_connected',0))}  причина: {p.get('ban_reason','?')}")
+
+def cmd_unbanall():
+    d = api("/v1/peers/all"); peers = d if isinstance(d, list) else []
+    n = 0
+    for p in peers:
+        if p.get("flags") == "Banned":
+            api(f"/v1/peers/{p.get('addr')}/unban", "POST"); n += 1
+    print(f"разбанено (дан второй шанс): {n}")
+
 def cmd_watch(n=5, iv=15):
     import time
     print(f"AUTO: баню отставших >{n}, держу {len(KEEP)} быстрых хабов. Ctrl+C стоп", flush=True)
@@ -102,6 +125,8 @@ def cmd_watch(n=5, iv=15):
 
 c = sys.argv[1] if len(sys.argv) > 1 else "list"
 if c == "scan": cmd_scan()
+elif c == "banned": cmd_banned()
+elif c == "unbanall": cmd_unbanall()
 elif c == "connect": cmd_connect(sys.argv[2])
 elif c == "watch": cmd_watch(int(sys.argv[2]) if len(sys.argv) > 2 else 5, int(sys.argv[3]) if len(sys.argv) > 3 else 15)
 elif c == "list": cmd_list()
