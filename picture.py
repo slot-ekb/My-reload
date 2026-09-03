@@ -13,7 +13,7 @@ if not LOG or not os.path.isfile(LOG):
 recv_h = {}     # height -> IP пира, от кого получили (напрямую из строки)
 recv_t = {}     # height -> время получения
 acc = {}        # height -> (time, hash)   принят нодой
-rx_recv = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*Received block \w+ at (\d+) from ([\d.]+:\d+)')
+rx_recv = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*Received block (?:header )?\w+ at (\d+) from ([\d.]+:\d+)')
 rx_acc  = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*block_accepted \((?:head\+|fork\?)\): (\w+) at (\d+)')
 files = sorted([f for f in glob.glob(LOG + ".*")], reverse=True) + [LOG]
 for fn in files:
