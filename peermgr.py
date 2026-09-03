@@ -73,11 +73,27 @@ def cmd_scan():
     for p in peers:
         a = p.get("addr", "?"); f = p.get("flags", ""); print(f"  {a:24s} {f}")
 
-# быстрые доставщики по данным fastpeers (мало мс) — НЕ банить, держать
-KEEP = {"212.95.62.131:3434", "209.58.168.166:3414", "91.82.65.18:3414",
-        "125.160.52.119:3414", "144.202.75.237:3414", "195.162.57.26:3414",
-        "66.29.156.83:3434", "89.58.53.79:3414", "178.164.207.92:3414",
-        "83.217.13.38:3414"}   # 83.217 = наша нода-1 (нужна ноде-2)
+def learn_fast():
+    # САМ учит быстрых из лога: кто был первым доставщиком блока (хоть раз) = защищаем от бана
+    import glob as _g
+    gg = _g.glob(os.path.expanduser("~/.epic/main/epic-server.log")) or \
+         _g.glob(os.path.expanduser("~/.epic/**/epic-server.log"), recursive=True)
+    if not gg: return set()
+    import re
+    from collections import Counter
+    base = gg[0]; first = {}
+    rx = re.compile(r'Received block header \w+ at (\d+) from ([\d.]+:\d+)')
+    for fn in sorted(_g.glob(base + ".*"), reverse=True) + [base]:
+        try:
+            for line in open(fn, errors='replace'):
+                m = rx.search(line)
+                if m:
+                    h = int(m.group(1))
+                    if h not in first: first[h] = m.group(2)
+        except: pass
+    c = Counter(first.values())
+    fast = {p for p, n in c.items() if n >= 2}     # был первым ≥2 раз = стабильно быстрый
+    return fast or {p for p, _ in c.most_common(10)}
 
 def cmd_connect(addr): print(api(f"/v1/peers/{addr}/connect", "POST").get("__err", "ok"))
 
@@ -110,24 +126,22 @@ def cmd_unbanall():
             api(f"/v1/peers/{p.get('addr')}/unban", "POST"); n += 1
     print(f"разбанено (дан второй шанс): {n}")
 
-def cmd_watch(n=5, iv=15):
+def cmd_watch(n=50, iv=30):
     import time
-    print(f"AUTO: баню отставших >{n}, держу {len(KEEP)} быстрых хабов. Ctrl+C стоп", flush=True)
+    fast = learn_fast()
+    print(f"AUTO: порог {n}, быстрых защищено {len(fast)} (учу из лога). Ctrl+C стоп", flush=True)
+    cyc = 0
     while True:
-        t = tip(); peers = connected()
-        conn = {p.get("addr") for p in peers}; nb = 0
+        if cyc % 10 == 0: fast = learn_fast()            # обновляю список быстрых раз в 10 циклов
+        t = tip(); peers = connected(); nb = 0
         for p in peers:
             a = p.get("addr")
-            if a in KEEP: continue                       # хабы не трогаем
+            if a in fast: continue                        # быстрых не трогаем
             if t - p.get("height", 0) > n:
                 api(f"/v1/peers/{a}/ban", "POST"); nb += 1
-        rc = 0                                            # подтянуть отсутствующие хабы
-        for hub in KEEP:
-            if hub not in conn:
-                if not api(f"/v1/peers/{hub}/connect", "POST").get("__err"): rc += 1
-        hubs_on = len(KEEP & conn)
-        print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} хабов_онлайн={hubs_on} бан={nb} подтянул={rc}", flush=True)
-        time.sleep(iv)
+        on = len(fast & {p.get("addr") for p in peers})
+        print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} быстрых_на_связи={on} бан={nb}", flush=True)
+        cyc += 1; time.sleep(iv)
 
 c = sys.argv[1] if len(sys.argv) > 1 else "list"
 if c == "scan": cmd_scan()
