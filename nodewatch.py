@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-# nodewatch.py — ставится НА НОДУ. Меряет на часах ноды:
-#   TIP  = когда нода узнала новую высоту (опрос API)
-#   JOB  = когда нода отдала задание в стратум (слушаем как майнер)
-#   DELAY = JOB - TIP  => внутренняя задержка ноды «знаю блок -> отдал работу»
-# Сеть тут ~0 (всё локально), поэтому это чистая задержка самой ноды.
-#
-# Запуск на ноде:
-#   python3 nodewatch.py [stratum_host:port] [api_base]
-#   по умолчанию: 127.0.0.1:28061  http://127.0.0.1:3413
-# Секрет API берётся сам из ~/.epic/.../.api_secret (или env EPIC_API_SECRET).
-import socket, json, threading, time, sys, os, glob, base64, urllib.request
+# nodewatch.py — НА НОДЕ. Ловит удержание блоков и задержку выдачи.
+# На каждый новый блок:
+#   BLOCK h=... algo=... интервал=<время блока> создан->получен=<разрыв> [метки]
+#     создан->получен большой  = блок придержали (создан раньше, вброшен позже)
+#     интервал длинный + следом cuckoo = подозрение на удержание под cuckoo
+#   JOB   = момент выдачи задания в стратум (клок ноды)
+#   DELAY = задержка нода узнала -> отдала джоб
+# Запуск: python3 nodewatch.py [stratum_host:port] [api_base]
+import socket, json, threading, time, sys, os, glob, base64, urllib.request, urllib.error
+from datetime import datetime, timezone
 
 STRATUM = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1:28061"
 API     = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:3413"
@@ -20,77 +19,116 @@ def ts(t=None):
     t = t if t is not None else now()
     return time.strftime("%H:%M:%S", time.localtime(t)) + f".{int((t%1)*1000):03d}"
 
-# --- найти секрет API ноды ---
+# --- секрет: сперва .api_secret (owner путь из конфига — он и работает) ---
 def find_secret():
     if os.environ.get("EPIC_API_SECRET"): return os.environ["EPIC_API_SECRET"].strip()
-    cands = []
-    for base in ("~/.epic", "/root/.epic", "~/.epic/main", "/root/.epic/main", "."):
-        b = os.path.expanduser(base)
-        cands += glob.glob(b + "/.*api_secret") + glob.glob(b + "/.api_secret") + glob.glob(b + "/.foreign_api_secret")
-    for pat in ("~/.epic/**/.*api_secret", "/root/.epic/**/.*api_secret"):
-        cands += glob.glob(os.path.expanduser(pat), recursive=True)
-    for p in cands:
+    order = ["~/.epic/main/.api_secret", "/root/.epic/main/.api_secret",
+             "~/.epic/main/.foreign_api_secret", "~/.epic/main/.owner_api_secret"]
+    for p in order:
+        p = os.path.expanduser(p)
+        if os.path.isfile(p):
+            try:
+                s = open(p).read().strip()
+                if s: return s
+            except: pass
+    for g in glob.glob(os.path.expanduser("~/.epic/**/.api_secret"), recursive=True):
         try:
-            s = open(p).read().strip()
+            s = open(g).read().strip()
             if s: return s
         except: pass
     return None
 
 SECRET = find_secret()
-# варианты Basic-auth (Epic/Grin: user обычно "epic", иногда пусто/"grin")
 AUTH_VARIANTS = []
 if SECRET:
     for user in ("epic", "", "grin"):
         AUTH_VARIANTS.append("Basic " + base64.b64encode((user + ":" + SECRET).encode()).decode())
-AUTH_VARIANTS.append(None)  # без авторизации — на случай если не нужна
+AUTH_VARIANTS.append(None)
 AUTH = AUTH_VARIANTS[0]
 
-tip_seen = {}; job_seen = {}; cuck_seen = {}
-lock = threading.Lock()
-
-def report(h):
-    with lock:
-        if h in tip_seen and h in job_seen and not job_seen[h].get("done"):
-            t_tip = tip_seen[h]; t_job = job_seen[h]["t"]; algo = job_seen[h]["algo"]
-            d = (t_job - t_tip) * 1000
-            extra = ""
-            if h in cuck_seen:
-                dc = (cuck_seen[h] - t_tip) * 1000
-                extra = f" | cuckoo-джоб через {dc:+.0f} мс"
-            print(f"{ts(t_job)} DELAY h={h}: нода узнала->отдала джоб = {d:+.0f} мс (первый algo={algo}){extra}", flush=True)
-            job_seen[h]["done"] = True
-
-def api_get():
+def api_get(path):
     global AUTH
+    last = None
     for a in ([AUTH] + [x for x in AUTH_VARIANTS if x != AUTH]):
         try:
-            req = urllib.request.Request(API + "/v1/status")
+            req = urllib.request.Request(API + path)
             if a: req.add_header("Authorization", a)
             with urllib.request.urlopen(req, timeout=5) as r:
                 data = json.loads(r.read().decode())
                 if AUTH != a:
-                    AUTH = a
-                    print(f"{ts()} [api] авторизация ок ({'secret' if a else 'без auth'})", flush=True)
+                    AUTH = a; print(f"{ts()} [api] авторизация ок", flush=True)
                 return data
         except urllib.error.HTTPError as e:
+            last = e
             if e.code == 401: continue
             raise
-    raise Exception("401 на всех вариантах авторизации (проверь api_secret)")
+    raise Exception(f"API auth не подошла ({last})")
+
+def parse_ts(s):
+    if not s: return None
+    try:
+        s = s.replace("Z", "+00:00")
+        return datetime.fromisoformat(s).timestamp()
+    except:
+        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S"):
+            try: return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp()
+            except: pass
+    return None
+
+tip_seen = {}; job_seen = {}; cuck_seen = {}; block_info = {}
+last_h = None; last_recv = None
+lock = threading.Lock()
+
+def report_delay(h):
+    with lock:
+        if h in tip_seen and h in job_seen and not job_seen[h].get("done"):
+            d = (job_seen[h]["t"] - tip_seen[h]) * 1000
+            print(f"{ts(job_seen[h]['t'])} DELAY h={h}: узнала->отдала джоб = {d:+.0f} мс", flush=True)
+            job_seen[h]["done"] = True
+
+def on_new_height(h, recv):
+    global last_h, last_recv
+    interval = (recv - last_recv) if last_recv else None
+    # алго из стратум-джоба (если уже видели) или из заголовка
+    algo = job_seen.get(h, {}).get("algo", "?")
+    # заголовок блока -> timestamp создания
+    created = None
+    try:
+        blk = api_get("/v1/blocks/%d" % h)
+        hdr = blk.get("header", blk)
+        created = parse_ts(hdr.get("timestamp"))
+        block_info[h] = {"created": created}
+    except Exception as e:
+        block_info[h] = {"created": None, "err": str(e)}
+    gap = (recv - created) if created else None
+    parts = [f"{ts(recv)} BLOCK h={h} algo={algo:8s}"]
+    parts.append(f"интервал={interval:5.1f}s" if interval is not None else "интервал=  ?  ")
+    parts.append(f"создан->получен={gap:+.1f}s" if gap is not None else "создан->получен=?")
+    marks = []
+    if interval is not None and interval > 120: marks.append("ДЛИННЫЙ")
+    if gap is not None and gap > 5: marks.append("!!ПРИДЕРЖАН?")
+    # если предыдущий был длинный, а этот cuckoo — подсветить
+    if algo == "cuckoo" and last_h in block_info:
+        pass
+    if marks: parts.append(" ".join(marks))
+    print("  ".join(parts), flush=True)
+    last_h = h; last_recv = recv
 
 def api_poller():
-    last = None; warned = False
+    global last_h
     print(f"{ts()} [api] секрет: {'найден' if SECRET else 'НЕ найден'}", flush=True)
+    last = None; warned = False
     while True:
         try:
-            st = api_get()
+            st = api_get("/v1/status")
             h = st.get("tip", {}).get("height") or st.get("height")
             if h is not None and h != last:
-                last = h
+                last = h; recv = now()
                 with lock:
-                    if h not in tip_seen:
-                        tip_seen[h] = now()
-                        print(f"{ts()} TIP  нода увидела высоту {h}", flush=True)
-                report(h)
+                    if h not in tip_seen: tip_seen[h] = recv
+                on_new_height(h, recv)
+                report_delay(h)
+                warned = False
         except Exception as e:
             if not warned:
                 print(f"{ts()} [api] {e}", flush=True); warned = True
@@ -130,12 +168,12 @@ def stratum_listener():
                             with lock:
                                 if h not in job_seen: job_seen[h] = {"t": t, "algo": algo}
                                 if algo == "cuckoo" and h not in cuck_seen: cuck_seen[h] = t
-                            print(f"{ts(t)} JOB  h={h} algo={algo:8s} job_id={jid}", flush=True)
-                            report(h)
+                            print(f"{ts(t)} JOB   h={h} algo={algo:8s} job_id={jid}", flush=True)
+                            report_delay(h)
         except Exception as e:
             print(f"{ts()} [stratum] reconnect: {e}", flush=True); time.sleep(2)
 
-print(f"nodewatch: stratum={STRATUM} api={API}  (Ctrl+C выход)", flush=True)
+print(f"nodewatch: stratum={STRATUM} api={API}", flush=True)
 threading.Thread(target=api_poller, daemon=True).start()
 threading.Thread(target=stratum_listener, daemon=True).start()
 while True: time.sleep(1)
