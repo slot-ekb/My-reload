@@ -73,20 +73,36 @@ def cmd_scan():
     for p in peers:
         a = p.get("addr", "?"); f = p.get("flags", ""); print(f"  {a:24s} {f}")
 
+# быстрые хабы (первые на cuckoo/pre-cuckoo) — НЕ банить, держать
+KEEP = {"3.133.157.114:3414", "212.95.62.131:3434", "57.128.208.109:3414",
+        "89.58.53.79:3414", "178.156.236.136:3414", "37.27.182.223:3414",
+        "73.97.43.138:3414", "91.82.65.18:3414", "66.29.156.83:3434",
+        "195.162.57.26:3414", "161.97.160.59:3414"}
+
+def cmd_connect(addr): print(api(f"/v1/peers/{addr}/connect", "POST").get("__err", "ok"))
+
 def cmd_watch(n=5, iv=15):
     import time
-    print(f"AUTO: баню отставших > {n} блоков каждые {iv}с (Ctrl+C стоп)", flush=True)
+    print(f"AUTO: баню отставших >{n}, держу {len(KEEP)} быстрых хабов. Ctrl+C стоп", flush=True)
     while True:
-        t = tip(); peers = connected(); nb = 0
+        t = tip(); peers = connected()
+        conn = {p.get("addr") for p in peers}; nb = 0
         for p in peers:
-            lag = t - p.get("height", 0)
-            if lag > n:
-                api(f"/v1/peers/{p.get('addr')}/ban", "POST"); nb += 1
-        print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} забанено_отставших={nb}", flush=True)
+            a = p.get("addr")
+            if a in KEEP: continue                       # хабы не трогаем
+            if t - p.get("height", 0) > n:
+                api(f"/v1/peers/{a}/ban", "POST"); nb += 1
+        rc = 0                                            # подтянуть отсутствующие хабы
+        for hub in KEEP:
+            if hub not in conn:
+                if not api(f"/v1/peers/{hub}/connect", "POST").get("__err"): rc += 1
+        hubs_on = len(KEEP & conn)
+        print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} хабов_онлайн={hubs_on} бан={nb} подтянул={rc}", flush=True)
         time.sleep(iv)
 
 c = sys.argv[1] if len(sys.argv) > 1 else "list"
 if c == "scan": cmd_scan()
+elif c == "connect": cmd_connect(sys.argv[2])
 elif c == "watch": cmd_watch(int(sys.argv[2]) if len(sys.argv) > 2 else 5, int(sys.argv[3]) if len(sys.argv) > 3 else 15)
 elif c == "list": cmd_list()
 elif c == "clean": cmd_clean(int(sys.argv[2]) if len(sys.argv) > 2 else 50)
