@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# fastpeers.py — РЕЙТИНГ пиров по СКОРОСТИ доставки: кто ЧАЩЕ первым приносит нам блок.
-# Считает по всем блокам в логе (первый "Received block header ... from <peer>" на каждой высоте).
+# fastpeers.py — рейтинг пиров по СКОРОСТИ доставки блоков.
+#   "первый" = сколько раз пир раньше всех прислал заголовок блока.
+#   "ср.отставание" = в среднем на сколько мс он позже первого (0 = он и есть первый).
 import re, os, glob, sys
-from collections import Counter
+from collections import Counter, defaultdict
 LOG = sys.argv[1] if len(sys.argv) > 1 else None
 if not LOG:
     g = glob.glob(os.path.expanduser("~/.epic/main/epic-server.log")) or \
@@ -11,25 +12,32 @@ if not LOG:
 if not LOG or not os.path.isfile(LOG):
     print("нет epic-server.log"); sys.exit(1)
 
-first = {}      # height -> peer  (кто ПЕРВЫЙ прислал заголовок)
-first_all = {}  # height -> [все, кто прислал]  для доли «первый из скольких»
+def tsec(t):
+    hh, mm, ss = t.split(":"); return int(hh)*3600 + int(mm)*60 + float(ss)
+
+times = defaultdict(dict)   # height -> {peer: секунды первого прихода}
 rx = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*Received block header \w+ at (\d+) from ([\d.]+:\d+)')
-files = sorted(glob.glob(LOG + ".*"), reverse=True) + [LOG]   # старые -> новый
-for fn in files:
+for fn in sorted(glob.glob(LOG + ".*"), reverse=True) + [LOG]:
     try:
         for line in open(fn, errors='replace'):
             m = rx.search(line)
             if m:
-                h = int(m.group(2)); peer = m.group(3)
-                if h not in first: first[h] = peer
-                first_all.setdefault(h, set()).add(peer)
+                h = int(m.group(2)); peer = m.group(3); ts = tsec(m.group(1))
+                if peer not in times[h]: times[h][peer] = ts
     except: pass
 
-total = len(first)
-print(f"файлов лога: {len(files)}  |  блоков проанализировано: {total}\n")
-print("РЕЙТИНГ по скорости (кто ЧАЩЕ первым приносит блок):")
-for peer, cnt in Counter(first.values()).most_common(25):
-    print(f"  {cnt:4d}x  ({100*cnt//max(total,1):2d}%)   {peer}")
-# сколько пиров в среднем присылают каждый блок (для контекста)
-avg = sum(len(v) for v in first_all.values()) / max(len(first_all), 1)
-print(f"\nв среднем блок присылают {avg:.1f} пиров; первый — это и есть самый быстрый на тот блок.")
+firstc = Counter(); behind = defaultdict(list); deliv = Counter()
+for h, pt in times.items():
+    mn = min(pt.values()); winner = min(pt, key=pt.get)
+    firstc[winner] += 1
+    for peer, t in pt.items():
+        d = (t - mn) * 1000
+        if 0 <= d < 60000:                    # отсекаем мусор (переход суток и т.п.)
+            behind[peer].append(d); deliv[peer] += 1
+
+total = len(times)
+print(f"блоков: {total}\n")
+print("кто ПЕРВЫЙ  | ср.отставание от первого | доставок | пир")
+for peer, cnt in firstc.most_common(25):
+    b = behind.get(peer, [0]); avg = sum(b)/len(b)
+    print(f"  {cnt:4d}x ({100*cnt//max(total,1):2d}%)   {avg:6.0f} мс   {deliv[peer]:4d}   {peer}")
