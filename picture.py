@@ -10,18 +10,19 @@ if not LOG:
 if not LOG or not os.path.isfile(LOG):
     print("нет epic-server.log"); sys.exit(1)
 
-received = {}   # hash -> первый пир
-acc = {}        # height -> (time, hash)   последний accepted на высоте
-rx_recv = re.compile(r'Received block (\w+) at (\d+) from ([\d.]+:\d+)')
+recv_h = {}     # height -> IP пира, от кого получили (напрямую из строки)
+recv_t = {}     # height -> время получения
+acc = {}        # height -> (time, hash)   принят нодой
+rx_recv = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*Received block \w+ at (\d+) from ([\d.]+:\d+)')
 rx_acc  = re.compile(r'(\d\d:\d\d:\d\d\.\d+) .*block_accepted \((?:head\+|fork\?)\): (\w+) at (\d+)')
-# читаем старые ротированные файлы (.1, .2 ...) от старых к новым, потом текущий
 files = sorted([f for f in glob.glob(LOG + ".*")], reverse=True) + [LOG]
 for fn in files:
     try:
         for line in open(fn, errors='replace'):
             m = rx_recv.search(line)
-            if m and m.group(1) not in received:
-                received[m.group(1)] = m.group(3)
+            if m:
+                h = int(m.group(2))
+                if h not in recv_h: recv_h[h] = m.group(3); recv_t[h] = m.group(1)
             m = rx_acc.search(line)
             if m:
                 acc[int(m.group(3))] = (m.group(1), m.group(2))
@@ -29,9 +30,11 @@ for fn in files:
 print(f"файлов лога прочитано: {len(files)}")
 
 def src(height):
-    if height not in acc: return ("?", "нет данных")
-    tm, h = acc[height]
-    return (tm, ">>> МЫ ВЗЯЛИ <<<" if h not in received else received[h])
+    if height in recv_h:                       # получен от пира — есть IP
+        return (recv_t[height], recv_h[height])
+    if height in acc:                          # принят, но не получен от пира = намайнили сами
+        return (acc[height][0], ">>> МЫ ВЗЯЛИ <<<")
+    return ("?", "нет данных (вне лога)")
 
 cuckoos = sorted(hh for hh in acc if hh % 25 == 4)
 print(f"лог: {LOG}")
@@ -46,7 +49,7 @@ for ch in cuckoos:
 print(f"\n==== ИТОГ: cuckoo всего {len(cuckoos)}, ВЗЯЛИ мы {won} ({100*won//max(len(cuckoos),1)}%) ====")
 # кто чаще отдаёт pre-блок (перед cuckoo) — их пинить
 from collections import Counter
-pre_src = Counter(src(ch-1)[1] for ch in cuckoos if src(ch-1)[1] not in ("нет данных",">>> МЫ ВЗЯЛИ <<<"))
+pre_src = Counter(src(ch-1)[1] for ch in cuckoos if src(ch-1)[1][0:1].isdigit())
 if pre_src:
     print("кто чаще приносит pre-блок (перед cuckoo):")
     for p, c in pre_src.most_common(): print(f"   {c}x  {p}")
