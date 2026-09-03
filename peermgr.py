@@ -92,8 +92,8 @@ def learn_fast():
                     if h not in first: first[h] = m.group(2)
         except: pass
     c = Counter(first.values())
-    fast = {p for p, n in c.items() if n >= 2}     # был первым ≥2 раз = стабильно быстрый
-    return fast or {p for p, _ in c.most_common(10)}
+    fast = {p for p, n in c.items() if n >= 3}     # был первым ≥3 раз = стабильно быстрый (случайные не в счёт)
+    return fast or {p for p, _ in c.most_common(5)}
 
 def cmd_connect(addr): print(api(f"/v1/peers/{addr}/connect", "POST").get("__err", "ok"))
 
@@ -135,10 +135,10 @@ def cmd_watch(n=50, iv=30):
         if cyc % 10 == 0: fast = learn_fast()            # обновляю список быстрых раз в 10 циклов
         t = tip(); peers = connected(); nb = 0
         for p in peers:
-            a = p.get("addr")
-            if a in fast: continue                        # быстрых не трогаем
-            if t - p.get("height", 0) > n:
-                api(f"/v1/peers/{a}/ban", "POST"); nb += 1
+            a = p.get("addr"); lag = t - p.get("height", 0)
+            if lag <= n: continue                          # синхронный — не трогаем
+            if a in fast and lag <= n * 5: continue        # быстрого щадим при умеренном лаге...
+            api(f"/v1/peers/{a}/ban", "POST"); nb += 1     # ...но при СИЛЬНОМ отставании баним даже его
         on = len(fast & {p.get("addr") for p in peers})
         print(f"{time.strftime('%H:%M:%S')} tip={t} подключено={len(peers)} быстрых_на_связи={on} бан={nb}", flush=True)
         cyc += 1; time.sleep(iv)
