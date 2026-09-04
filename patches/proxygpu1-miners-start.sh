@@ -2,7 +2,7 @@
 # GPU-майнеры НАПРЯМУЮ на ноду (без прокси). PROC_PER_GPU процессов на карту, каждый на своё физ.ядро.
 BASE="$(cd "$(dirname "$0")"&&pwd)"; . "$BASE/config.env"
 [ "${PERF:-off}" = on ] && echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null 2>&1
-NG=$(nvidia-smi -L 2>/dev/null | wc -l); [ "$NG" -lt 1 ] && NG=1
+NG=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU'); [ "$NG" -lt 1 ] && NG=1
 PPG=${PROC_PER_GPU:-2}; [ "$PPG" -lt 1 ] && PPG=1
 G=$(( NG * PPG ))
 . "$BASE/aff.sh" "$G" >/dev/null 2>&1 || true; IFS=',' read -ra GA <<< "${GPUSET:-}"
