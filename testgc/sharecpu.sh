@@ -42,7 +42,7 @@ for ((p=0;p<N;p++)); do
   cat > "$D/epic-miner.toml" <<TOML
 [logging]
 log_to_stdout = false
-log_to_file = false
+log_to_file = true
 file_log_level = "Info"
 stdout_log_level = "Info"
 log_file_path = "$D/miner.log"
@@ -66,9 +66,24 @@ TOML
   screen -dmS "tw$p" bash -c "cd '$D'; export LD_LIBRARY_PATH='$BASE/lib'; export EPIC_RANGE='${RANGE:-1}'; while true; do taskset -c ${CORES[$p]} '$MB' -c epic-miner.toml; sleep 3; done"
 done
 
-sleep "$SECS"
-echo "----------------------------------------"
-echo ">>> CPU шары за ${SECS}с:"
-echo "    $(grep 'СТАТ' "$BASE/proxy_cpu.log" | tail -1)"
-echo "    (шары_получ = найдено воркерами, шары_отосл = ушло на фейк-ноду)"
+# суммарная скорость по логам воркеров (последнее gps каждого)
+sum_gps(){ local s=0 v f; for f in "$BASE"/run/cpu/*/miner.log; do [ -f "$f" ] || continue; v=$(grep -oE 'at [0-9.]+ gps' "$f" 2>/dev/null | tail -1 | grep -oE '[0-9.]+'); [ -n "$v" ] && s=$(awk "BEGIN{printf \"%.2f\",$s+$v}"); done; echo "$s"; }
+getk(){ grep 'СТАТ' "$BASE/proxy_cpu.log" | tail -1 | grep -oE "$1=[0-9]+" | grep -oE '[0-9]+$'; }
+
+# live-вывод раз в 5с
+el=0; step=5
+while [ "$el" -lt "$SECS" ]; do
+  sl=$step; [ $((el+step)) -gt "$SECS" ] && sl=$((SECS-el)); sleep "$sl"; el=$((el+sl))
+  printf "  [%2s/%sс] g/s=%-8s шары=%-5s задания=%-4s\n" "$el" "$SECS" "$(sum_gps)" "$(getk шары_получ)" "$(getk задания_получ)"
+done
+
+G=$(sum_gps); RX=$(getk шары_получ); TX=$(getk шары_отосл); JR=$(getk задания_получ); JT=$(getk задания_розд)
+SPS=$(awk "BEGIN{printf \"%.2f\", ${TX:-0}/$SECS}")
+echo "======================= ИТОГ CPU ======================="
+printf "  время:        %sс\n" "$SECS"
+printf "  воркеров:     %s   инстансов/воркер: %s   nthreads: %s   бинарь: %s\n" "$N" "$INST" "$NTH" "$BIN"
+printf "  СКОРОСТЬ:     %s g/s  (сумма по воркерам)\n" "$G"
+printf "  шары:         найдено=%s  отослано=%s   (%s шар/сек)\n" "${RX:-0}" "${TX:-0}" "$SPS"
+printf "  задания:      получено=%s  роздано=%s\n" "${JR:-0}" "${JT:-0}"
+echo "========================================================"
 "$BASE/stop.sh" >/dev/null 2>&1
