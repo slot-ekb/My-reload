@@ -36,6 +36,7 @@ if [ "${CORESN:-0}" -le 0 ]; then N=$(( NAVAIL - ${CPU_RESERVE:-2} )); [ "$N" -l
 [ "$INST" -lt 1 ] && INST=1
 
 BLK=""; for ((k=0;k<INST;k++)); do BLK+='[[mining.miner_plugin_config]]\nplugin_name = "cuckatoo_mean_cpu_avx2_19"\n[mining.miner_plugin_config.parameters]\nnthreads = '"$NTH"'\n'; done
+rm -rf "$BASE/run/cpu"
 echo ">>> CPU: ядер/воркеров=$N (из $NAVAIL) инстансов_на_воркер=$INST nthreads=$NTH бинарь=$BIN замер ${SECS}с..."
 for ((p=0;p<N;p++)); do
   D="$BASE/run/cpu/w$p"; mkdir -p "$D"

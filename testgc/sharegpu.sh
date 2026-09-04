@@ -26,6 +26,7 @@ N=${CARDS:-0}; [ "$N" -le 0 ] && N=$NG
 setsid python3 "$BASE/fakestratum.py" "$FAKE_PORT" >"$BASE/fake.log" 2>&1 & sleep 1
 setsid python3 -u "$BASE/bin/epic_proxy.py" "127.0.0.1:$FAKE_PORT" "$GPU_PROXY_PORT" >"$BASE/proxy_gpu.log" 2>&1 & sleep 2
 
+rm -rf "$BASE/run/gpu"
 echo ">>> GPU: карт=$N инстансов_на_карту=$INST бинарь=$BIN замер ${SECS}с..."
 for ((i=0;i<N;i++)); do
   D="$BASE/run/gpu/g$i"; mkdir -p "$D"
