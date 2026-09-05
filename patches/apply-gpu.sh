@@ -7,7 +7,7 @@ dl proxygpu1-miners-start.sh /opt/proxygpu1/miners-start.sh || { echo "СКАЧ 
 head -1 /opt/proxygpu1/miners-start.sh | grep -q '#!/bin/bash' || { echo "ФАЙЛ БИТЫЙ"; exit 1; }
 dl proxygpu1-all-start.sh /opt/proxygpu1/all-start.sh || true
 chmod +x /opt/proxygpu1/miners-start.sh /opt/proxygpu1/all-start.sh
-grep -q '^PROC_PER_GPU=' /opt/proxygpu1/config.env || echo 'PROC_PER_GPU=2' >> /opt/proxygpu1/config.env
-sed -i 's/^PROC_PER_GPU=.*/PROC_PER_GPU=2/' /opt/proxygpu1/config.env
+grep -q '^PROC_PER_GPU=' /opt/proxygpu1/config.env || echo 'PROC_PER_GPU=2   # процессов на карту' >> /opt/proxygpu1/config.env
+grep -q '^CORES_PER_GPU=' /opt/proxygpu1/config.env || echo 'CORES_PER_GPU=2  # физ.ядер на карту (=PROC_PER_GPU: 1 ядро/процесс)' >> /opt/proxygpu1/config.env
 grep -q '^USE_PROXY=' /opt/proxygpu1/config.env || echo 'USE_PROXY=off' >> /opt/proxygpu1/config.env
 /opt/proxygpu1/miners-stop.sh; sleep 2; /opt/proxygpu1/miners-start.sh

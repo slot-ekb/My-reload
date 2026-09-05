@@ -1,10 +1,16 @@
 #!/bin/bash
-# GPU-майнеры НАПРЯМУЮ на ноду (без прокси). PROC_PER_GPU процессов на карту, каждый на своё физ.ядро.
+# GPU-майнеры НАПРЯМУЮ на ноду (без прокси), настраиваемо:
+#   PROC_PER_GPU   = процессов на карту
+#   CORES_PER_GPU  = физ.ядер на карту (по умолч. = PROC_PER_GPU, т.е. 1 ядро/процесс).
+#     Процессы карты раскидываются round-robin по её ядрам:
+#     PROC=CORES -> 1 процесс на ядро; PROC>CORES -> делят ядро; PROC<CORES -> ядра в запас.
+#   USE_PROXY=on -> через прокси(:PROXY_PORT); off -> прямо на NODE.
 BASE="$(cd "$(dirname "$0")"&&pwd)"; . "$BASE/config.env"
 [ "${PERF:-off}" = on ] && echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null 2>&1
 NG=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU'); [ "$NG" -lt 1 ] && NG=1
 PPG=${PROC_PER_GPU:-2}; [ "$PPG" -lt 1 ] && PPG=1
-G=$(( NG * PPG ))
+CPG=${CORES_PER_GPU:-$PPG}; [ "$CPG" -lt 1 ] && CPG=1
+G=$(( NG * CPG ))                              # всего физ.ядер под карты
 . "$BASE/aff.sh" "$G" >/dev/null 2>&1 || true; IFS=',' read -ra GA <<< "${GPUSET:-}"
 declare -A _s; CORES=()
 for c in "${GA[@]}"; do
@@ -12,8 +18,8 @@ for c in "${GA[@]}"; do
   [ -n "${_s[$k]:-}" ] && continue; _s[$k]=1; CORES+=("$c")
 done
 [ "${#CORES[@]}" -lt 1 ] && for ((c=0;c<G;c++)); do CORES+=("$c"); done
-export EPIC_RANGE=${RANGE:-1}; MB="$BASE/bin/epic-miner-${MINER:-orig}"
 if [ "${USE_PROXY:-off}" = on ]; then STR="127.0.0.1:${PROXY_PORT:-3401}"; else STR="$NODE"; fi
+export EPIC_RANGE=${RANGE:-1}; MB="$BASE/bin/epic-miner-${MINER:-orig}"
 idx=0
 for ((card=0;card<NG;card++)); do
   for ((j=0;j<PPG;j++)); do
@@ -46,10 +52,11 @@ plugin_name = "cuckatoo_lean_cuda_19"
 [mining.miner_plugin_config.parameters]
 device = $card
 TOML
-    PIN=""; [ -n "${CORES[$idx]}" ] && PIN="taskset -c ${CORES[$idx]} "
+    ci=$(( card*CPG + (j % CPG) )); core="${CORES[$ci]}"
+    PIN=""; [ -n "$core" ] && PIN="taskset -c $core "
     screen -S "ecuk$idx" -X quit 2>/dev/null
     screen -dmS "ecuk$idx" bash -c "cd '$D'; export LD_LIBRARY_PATH='$BASE/lib'; export EPIC_RANGE=${RANGE:-1}; while true; do ${PIN}'$MB' -c epic-miner.toml; sleep 3; done"
     idx=$(( idx + 1 ))
   done
 done
-echo "GPU-майнеры: карт=$NG × $PPG = $idx процессов -> нода $NODE | ядра GPU: ${CORES[*]} | бинарь=${MINER}"
+echo "GPU: карт=$NG × $PPG проц = $idx процессов на $((NG*CPG)) ядрах ($CPG ядер/карту) -> $STR | бинарь=${MINER}"
