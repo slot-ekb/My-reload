@@ -8,8 +8,13 @@
 BASE="$(cd "$(dirname "$0")"&&pwd)"; . "$BASE/config.env"
 [ "${PERF:-off}" = on ] && echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor >/dev/null 2>&1
 NG=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU'); [ "$NG" -lt 1 ] && NG=0
-PPG=${PROC_PER_GPU:-2}; [ "$PPG" -lt 1 ] && PPG=1
-G=$(( NG * PPG ))
+# сколько физ.ядер реально заняли карты — читаем из GPU-пакета (если он есть), чтобы не пересечься
+G=0
+if [ "$NG" -gt 0 ] && [ -f /opt/proxygpu1/config.env ]; then
+  gp=$(grep -oE '^PROC_PER_GPU=[0-9]+' /opt/proxygpu1/config.env | grep -oE '[0-9]+$'); gp=${gp:-2}
+  gc=$(grep -oE '^CORES_PER_GPU=[0-9]+' /opt/proxygpu1/config.env | grep -oE '[0-9]+$'); gc=${gc:-$gp}
+  G=$(( NG * gc ))
+fi
 . "$BASE/aff.sh" "$G" >/dev/null 2>&1 || true; IFS=',' read -ra POOL <<< "${CPUSET:-}"
 [ "${#POOL[@]}" -lt 1 ] && POOL=($(seq 0 $(($(nproc)-1))))
 L=${#POOL[@]}
