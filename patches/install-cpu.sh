@@ -1,9 +1,9 @@
 #!/bin/bash
 # Чистая установка CPU-пакета на новый риг (без GPU). Запуск:
 #   ... | TK=ghp_ВАШ_ТОКЕН NODE=ip:port bash
-TK="${TK:?передай токен: ... | TK=ghp_ВАШ_ТОКЕН NODE=ip:port bash}"
-NODE="${NODE:?передай адрес ноды: ... | TK=... NODE=ip:port bash}"
-dl(){ curl -sfL -H "Authorization: token $TK" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/slot-ekb/My-reload/contents/$1" -o "$2"; }
+NODE="${NODE:?передай адрес ноды: ... | NODE=ip:port bash}"
+RAW=https://raw.githubusercontent.com/slot-ekb/My-reload/main
+dl(){ curl -sfL "$RAW/$1" -o "$2"; }
 dl proxycpu1.tar.gz /tmp/proxycpu1.tar.gz || { echo "СКАЧИВАНИЕ НЕ УДАЛОСЬ"; exit 1; }
 mkdir -p /opt && tar xzf /tmp/proxycpu1.tar.gz -C /opt || { echo "РАСПАКОВКА НЕ УДАЛАСЬ"; exit 1; }
 chmod +x /opt/proxycpu1/*.sh

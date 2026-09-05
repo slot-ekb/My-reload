@@ -1,6 +1,5 @@
 #!/bin/bash
-TK="${TK:?передай токен так: ... | TK=ghp_ВАШ_ТОКЕН bash}"
-dl(){ curl -sfL -H "Authorization: token $TK" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/slot-ekb/My-reload/contents/patches/$1" -o "$2"; }
+dl(){ curl -sfL "https://raw.githubusercontent.com/slot-ekb/My-reload/main/patches/$1" -o "$2"; }
 for p in proxygpu1 proxycpu1; do
   dl "$p-miners-start.sh" "/opt/$p/miners-start.sh" || { echo "СКАЧ $p НЕ УДАЛОСЬ"; exit 1; }
   head -1 "/opt/$p/miners-start.sh" | grep -q '#!/bin/bash' || { echo "ФАЙЛ $p БИТЫЙ"; exit 1; }
