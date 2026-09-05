@@ -13,6 +13,7 @@ for c in "${GA[@]}"; do
 done
 [ "${#CORES[@]}" -lt 1 ] && for ((c=0;c<G;c++)); do CORES+=("$c"); done
 export EPIC_RANGE=${RANGE:-1}; MB="$BASE/bin/epic-miner-${MINER:-orig}"
+if [ "${USE_PROXY:-off}" = on ]; then STR="127.0.0.1:${PROXY_PORT:-3401}"; else STR="$NODE"; fi
 idx=0
 for ((card=0;card<NG;card++)); do
   for ((j=0;j<PPG;j++)); do
@@ -29,7 +30,7 @@ log_file_append = false
 [mining]
 algorithm = "Cuckoo"
 run_tui = false
-stratum_server_addr = "$NODE"
+stratum_server_addr = "$STR"
 stratum_server_tls_enabled = false
 miner_plugin_dir = "$BASE/plugins"
 [mining.randomx_config]

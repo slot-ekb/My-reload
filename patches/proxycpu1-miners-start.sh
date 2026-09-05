@@ -21,6 +21,8 @@ done
 L=${#POOL[@]}
 RESERVE=${RESERVE:-2}
 INS=${INSTANCES:-2}; [ "$INS" -lt 1 ] && INS=1
+# куда шлём: прокси (127.0.0.1:PROXY_PORT) или прямо на ноду (NODE)
+if [ "${USE_PROXY:-off}" = on ]; then STR="127.0.0.1:${PROXY_PORT:-3400}"; else STR="$NODE"; fi
 if [ "${WORKERS:-0}" -gt 0 ]; then PROCS=$WORKERS
 else PROCS=$(( (PHYSN - RESERVE) / INS )); [ "$PROCS" -lt 1 ] && PROCS=1; fi
 MAXP=$(( L / INS )); [ "$MAXP" -lt 1 ] && MAXP=1
@@ -41,7 +43,7 @@ log_file_append = false
 [mining]
 algorithm = "Cuckoo"
 run_tui = false
-stratum_server_addr = "$NODE"
+stratum_server_addr = "$STR"
 stratum_server_tls_enabled = false
 miner_plugin_dir = "$BASE/plugins"
 [mining.randomx_config]
