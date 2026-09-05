@@ -4,7 +4,11 @@
 #   ./mtest.sh gpu [экземпляров] [инстансов] [карт] [секунд] [бинарь]
 # Параллельно в разных окнах:  SLOT=1 ./mtest.sh ... | SLOT=2 ./mtest.sh ...
 # Конкретные карты:            GPU_DEVICES=1,3 ./mtest.sh gpu ...
-BASE="$(cd "$(dirname "$0")"&&pwd)"; . "$BASE/config.env"
+BASE="$(cd "$(dirname "$0")"&&pwd)"
+_ENVRANGE="${RANGE:-}"; _ENVMINER="${MINER:-}"        # env-префикс главнее config.env
+. "$BASE/config.env"
+[ -n "$_ENVRANGE" ] && RANGE="$_ENVRANGE"
+[ -n "$_ENVMINER" ] && MINER="$_ENVMINER"
 MODE=${1:-cpu}
 EXE=${2:-1};  [ "$EXE" -lt 1 ] && EXE=1
 INST=${3:-1}; [ "$INST" -lt 1 ] && INST=1
