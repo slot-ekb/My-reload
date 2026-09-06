@@ -3,7 +3,8 @@ dl(){ curl -sfL "https://raw.githubusercontent.com/slot-ekb/My-reload/main/patch
 dl proxycpu1-miners-start.sh /opt/proxycpu1/miners-start.sh || { echo "СКАЧИВАНИЕ НЕ УДАЛОСЬ"; exit 1; }
 head -1 /opt/proxycpu1/miners-start.sh | grep -q '#!/bin/bash' || { echo "ФАЙЛ БИТЫЙ"; exit 1; }
 dl proxycpu1-all-start.sh /opt/proxycpu1/all-start.sh || true
-chmod +x /opt/proxycpu1/miners-start.sh /opt/proxycpu1/all-start.sh
+dl corelist.sh /opt/proxycpu1/corelist.sh || { echo "СКАЧ corelist НЕ УДАЛОСЬ"; exit 1; }
+chmod +x /opt/proxycpu1/miners-start.sh /opt/proxycpu1/all-start.sh /opt/proxycpu1/corelist.sh
 grep -q '^USE_PROXY=' /opt/proxycpu1/config.env || echo 'USE_PROXY=on' >> /opt/proxycpu1/config.env
 grep -q '^INSTANCES=' /opt/proxycpu1/config.env || echo 'INSTANCES=1' >> /opt/proxycpu1/config.env
 grep -q '^NTHREADS='  /opt/proxycpu1/config.env || echo 'NTHREADS=1'  >> /opt/proxycpu1/config.env

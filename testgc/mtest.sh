@@ -38,6 +38,7 @@ if [ "$MODE" = gpu ]; then
 else
   MODE=cpu; NTH=${6:-1}; BIN=${7:-${BIN:-orig}}; CP=$(( CPU_PROXY_PORT + SLOT*10 )); PLUG=cuckatoo_mean_cpu_avx2_19
   [ "$NUM" -lt 1 ] && NUM=1
+  . "$BASE/corelist.sh"; PERPROC=$(( INST * NTH ))   # как в бою: пин по физ.ядрам с ядра 0
 fi
 MB="$BASE/bin/epic-miner-${BIN}"
 
@@ -45,7 +46,7 @@ ROTATE_JOB="${ROTATE_JOB:-0}" setsid python3 "$BASE/fakestratum.py" "$FP" >"$FLO
 setsid python3 -u "$BASE/bin/epic_proxy.py" "127.0.0.1:$FP" "$CP" >"$PLOG" 2>&1 & sleep 2
 
 STEP=$(( NUM / EXE )); [ "$STEP" -lt 1 ] && STEP=1
-if [ "$MODE" = cpu ]; then HW="ядер=$NUM nthreads=$NTH (по $STEP/экз)"; else HW="карты=[${DEVS[*]}]${GPU_PIN:+ пин-ядро=$GPU_PIN}"; fi
+if [ "$MODE" = cpu ]; then HW="физ.ядер=$(( EXE*PERPROC )) (по $PERPROC/экз, nthreads=$NTH; 4-й арг игнор — пин как в бою)"; else HW="карты=[${DEVS[*]}]${GPU_PIN:+ пин-ядро=$GPU_PIN}"; fi
 echo ">>> [SLOT $SLOT порты $FP/$CP] $MODE: экземпляров=$EXE инстансов=$INST $HW бинарь=$BIN замер ${SECS}с..."
 
 for ((e=0;e<EXE;e++)); do
@@ -70,7 +71,7 @@ for ((e=0;e<EXE;e++)); do
       echo '[mining.miner_plugin_config.parameters]'; echo "nthreads = $NTH"; done
   fi
   } > "$D/epic-miner.toml"
-  if [ "$MODE" = cpu ]; then a=$((e*STEP)); b=$((a+STEP-1)); [ "$b" -gt $((NUM-1)) ] && b=$((NUM-1)); PIN="taskset -c $a-$b ";
+  if [ "$MODE" = cpu ]; then sl=""; for ((q=0;q<PERPROC;q++)); do ci=$((e*PERPROC+q)); [ -n "${CORES[$ci]}" ] && sl+="${CORES[$ci]},"; done; sl=${sl%,}; PIN=""; [ -n "$sl" ] && PIN="taskset -c $sl ";
   elif [ -n "$GPU_PIN" ]; then PIN="taskset -c $GPU_PIN "; else PIN=""; fi
   screen -dmS "tm${SLOT}_$e" bash -c "cd '$D'; export LD_LIBRARY_PATH='$BASE/lib'; export EPIC_RANGE='${RANGE:-1}'; while true; do ${PIN}'$MB' -c epic-miner.toml; sleep 3; done"
 done
