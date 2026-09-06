@@ -16,6 +16,7 @@ BUCKETS = [1,2,5,10,50,100,1000,10000,100000]
 hist = {b:0 for b in BUCKETS}
 total = 0; wmax = 0.0; wsum = 0.0
 lock = threading.Lock()
+_dbg = False
 MAXH = float(1 << 256)
 
 def job_params():
@@ -28,12 +29,13 @@ def send(sock,obj):
     except: pass
 def job_notif(): return {"id":"0","jsonrpc":"2.0","method":"job","params":job_params()}
 
-def weight(powl):
-    # вес = 2^256 / blake2b(pow). Детерминирован по решению, распределение как у сложности.
-    try:
-        b = b"".join(int(x).to_bytes(8,"little",signed=False) for x in powl)
-    except Exception:
-        return None
+def weight(pp):
+    # вес = 2^256 / blake2b(pow). Хэшируем строковое представление решения — не зависит от
+    # формата (int/hex/строки), исключений нет. Детерминирован; распределение как у сложности.
+    src = pp.get("pow")
+    if not src:
+        src = {k: pp.get(k) for k in ("nonce","pow","height","edge_bits")}
+    b = json.dumps(src, sort_keys=True, default=str).encode()
     hi = int.from_bytes(hashlib.blake2b(b, digest_size=32).digest(), "big")
     return (MAXH / hi) if hi else None
 
@@ -62,7 +64,10 @@ def handle(conn,addr):
                 send(conn,{"id":mid,"jsonrpc":"2.0","method":"getjobtemplate","result":job_params(),"error":None})
             elif m=="submit":
                 pp=msg.get("params",{}) or {}
-                w=weight(pp.get("pow"))
+                global _dbg
+                if not _dbg:
+                    _dbg=True; print(f"ДЕБАГ первый submit params: {json.dumps(pp)[:300]}", flush=True)
+                w=weight(pp)
                 with lock:
                     total+=1
                     if w is not None:
