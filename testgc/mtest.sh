@@ -77,13 +77,16 @@ done
 
 sumgps(){ local s=0 v f; for f in "$RUN"/*/miner.log; do [ -f "$f" ] || continue; v=$(grep -oE 'at [0-9.]+ gps' "$f" 2>/dev/null|tail -1|grep -oE '[0-9.]+'); [ -n "$v" ] && s=$(awk "BEGIN{printf \"%.1f\",$s+$v}"); done; echo "$s"; }
 getk(){ grep 'СТАТ' "$PLOG"|tail -1|grep -oE "$1=[0-9]+"|grep -oE '[0-9]+$'; }
+getf(){ grep 'НОДА СТАТ' "$FLOG"|tail -1|grep -oE "$1=[0-9]+"|grep -oE '[0-9]+$'; }
 el=0; step=5
 while [ "$el" -lt "$SECS" ]; do sl=$step; [ $((el+step)) -gt "$SECS" ] && sl=$((SECS-el)); sleep "$sl"; el=$((el+sl))
   printf "  [SLOT %s] [%2s/%sс] g/s=%-9s шары=%-5s\n" "$SLOT" "$el" "$SECS" "$(sumgps)" "$(getk шары_получ)"; done
 G=$(sumgps); RX=$(getk шары_получ); TX=$(getk шары_отосл); SPS=$(awk "BEGIN{printf \"%.2f\",${TX:-0}/$SECS}")
+ND=$(getf шары_на_ноде); NA=$(getf accept); NS=$(getf stale); NR=$(getf reject)
 echo "================= ИТОГ ($MODE, SLOT $SLOT) ================="
 printf "  экземпляров: %s   инстансов: %s   %s   бинарь: %s   время: %sс\n" "$EXE" "$INST" "$HW" "$BIN" "$SECS"
 printf "  СКОРОСТЬ:  %s g/s\n" "${G:-нет данных}"
-printf "  шары:      найдено=%s отослано=%s  (%s шар/сек)\n" "${RX:-0}" "${TX:-0}" "$SPS"
+printf "  прокси:    найдено=%s отослано=%s  (%s шар/сек)\n" "${RX:-0}" "${TX:-0}" "$SPS"
+printf "  НА НОДЕ:   долетело=%s  accept=%s stale=%s reject=%s\n" "${ND:-0}" "${NA:-0}" "${NS:-0}" "${NR:-0}"
 echo "==========================================================="
 slotstop

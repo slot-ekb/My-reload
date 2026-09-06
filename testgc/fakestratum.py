@@ -4,7 +4,10 @@
 import socket, threading, json, sys, time
 PORT = int(sys.argv[1]) if len(sys.argv)>1 else 3499
 subs_total = 0            # всего submit долетело до ноды
+acc_total = 0; stale_total = 0; rej_total = 0
+seen = set()              # (job_id,nonce) для отлова дублей
 subs_lock = threading.Lock()
+CUR_JOB_ID = 0
 PREPOW = "000600000000003844ec000000006a940165c3019a2165defebbd26e62b720b2371530caa28e1f5bdd26a00d7174420b2a4eca624c18f22463568acf497a8b0b43e2198ec449c606724905b7c1a8bd95d1512cc690981eb4c3ca3b12ec35751228da325dd6a07359ceebeb6acbd13738727066b4dc98d361c28edbd1a9f2b7db287205ccc19a037842451cde0ab71cfed988ab354f3ab87e8dde794ab96fa6b5a4dd94e29b8e63986a47b35e1f0cfd55491008b48f8b39702630bc392471552855bac84a4e7ed2f4075d3038fc0414da854700000000008d455800000000007aee23000000000000000400000000000115f9710100006d51b3b5849202001031907610c9090370566c89d8fbed070000000d" or "00"*118
 EPOCH = [14,16,161,199,1,78,223,82,219,196,225,96,45,50,129,175,152,103,144,127,35,59,23,31,159,139,114,147,9,48,28,27]
 HEIGHT = 1000000   # постоянная высота -> майнер не сбрасывает работу
@@ -43,11 +46,27 @@ def handle(conn,addr):
             elif m=="getjobtemplate":
                 send(conn,{"id":mid,"jsonrpc":"2.0","method":"getjobtemplate","result":job_params(),"error":None})
             elif m=="submit":
-                global subs_total
-                with subs_lock: subs_total += 1
+                global subs_total, acc_total, stale_total, rej_total
                 pp=msg.get("params",{}) or {}
-                print(f"НОДА<- submit #{subs_total} nonce={pp.get('nonce')} height={pp.get('height')} edge_bits={pp.get('edge_bits')} pow_len={len(pp.get('pow',[]) or [])}", flush=True)
-                send(conn,{"id":mid,"jsonrpc":"2.0","method":"submit","result":"ok","error":None})
+                nonce=pp.get("nonce"); h=pp.get("height"); jid=pp.get("job_id",0)
+                with subs_lock:
+                    subs_total += 1; key=(jid,nonce)
+                    if nonce is None or not pp.get("pow"):
+                        rej_total+=1; verdict="reject"; why="bad"
+                    elif key in seen:
+                        rej_total+=1; verdict="reject"; why="dup"
+                    elif h is not None and h!=HEIGHT:
+                        stale_total+=1; verdict="stale"; why="old_height"; seen.add(key)
+                    elif jid!=CUR_JOB_ID:
+                        stale_total+=1; verdict="stale"; why="old_job"; seen.add(key)
+                    else:
+                        acc_total+=1; verdict="accept"; why=""; seen.add(key)
+                    n=subs_total
+                if verdict=="accept":
+                    send(conn,{"id":mid,"jsonrpc":"2.0","method":"submit","result":"ok","error":None})
+                else:
+                    send(conn,{"id":mid,"jsonrpc":"2.0","method":"submit","result":None,"error":{"code":-1,"message":verdict+(":"+why if why else "")}})
+                print(f"НОДА<- #{n} {verdict}{('/'+why) if why else ''} nonce={nonce} h={h} job={jid}", flush=True)
             elif m in ("keepalive","status"):
                 send(conn,{"id":mid,"jsonrpc":"2.0","method":m,"result":"ok","error":None})
             else:
@@ -57,7 +76,8 @@ def stats():
     last=0
     while True:
         time.sleep(5)
-        print(f"НОДА СТАТ: шары_на_ноде={subs_total} (+{subs_total-last} за 5с)", flush=True); last=subs_total
+        with subs_lock: t,a,s,r=subs_total,acc_total,stale_total,rej_total
+        print(f"НОДА СТАТ: шары_на_ноде={t} accept={a} stale={s} reject={r} (+{t-last} за 5с)", flush=True); last=t
 threading.Thread(target=stats,daemon=True).start()
 s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
 s.bind(("0.0.0.0",PORT)); s.listen(64)
