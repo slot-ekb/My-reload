@@ -41,7 +41,7 @@ else
 fi
 MB="$BASE/bin/epic-miner-${BIN}"
 
-setsid python3 "$BASE/fakestratum.py" "$FP" >"$FLOG" 2>&1 & sleep 1
+ROTATE_JOB="${ROTATE_JOB:-0}" setsid python3 "$BASE/fakestratum.py" "$FP" >"$FLOG" 2>&1 & sleep 1
 setsid python3 -u "$BASE/bin/epic_proxy.py" "127.0.0.1:$FP" "$CP" >"$PLOG" 2>&1 & sleep 2
 
 STEP=$(( NUM / EXE )); [ "$STEP" -lt 1 ] && STEP=1
