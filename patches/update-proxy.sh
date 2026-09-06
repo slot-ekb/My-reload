@@ -12,6 +12,7 @@ for pkg in proxycpu1 proxygpu1; do
   dl "$pkg-proxy-start.sh" "$D/proxy-start.sh" || { echo "$pkg: СКАЧ proxy-start НЕ УДАЛОСЬ"; continue; }
   chmod +x "$D/proxy-start.sh" "$D/bin/epic_proxy.py"
   grep -q '^NODE2=' "$D/config.env" || echo 'NODE2=""' >> "$D/config.env"
+  grep -q '^NODE3=' "$D/config.env" || echo 'NODE3=""' >> "$D/config.env"
   echo "$pkg: прокси обновлён (NODE=$(grep -oE '^NODE=\"[^\"]*\"' "$D/config.env"), NODE2=$(grep -oE '^NODE2=\"[^\"]*\"' "$D/config.env"))"
   up=$(grep -oE '^USE_PROXY=[a-z]+' "$D/config.env" | grep -oE '[a-z]+$')
   if [ "$up" = on ]; then "$D/proxy-start.sh"; else

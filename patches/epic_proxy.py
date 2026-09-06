@@ -19,6 +19,7 @@ HOSTNAME = socket.gethostname()
 workers = set()
 latest_params = None
 latest_height = -1
+active_idx = -1       # чья нода сейчас даёт задание (кто первый принёс свежую высоту)
 node_writers = {}     # idx -> writer (только живые)
 dbgn = 0
 jobs_rx = 0           # заданий принято (суммарно со всех нод)
@@ -42,7 +43,7 @@ async def broadcast_job():
         except Exception: workers.discard(w)
 
 async def node_link(idx, host, port):
-    global latest_params, latest_height, dbgn, jobs_rx
+    global latest_params, latest_height, active_idx, dbgn, jobs_rx
     while True:
         try:
             r, w = await asyncio.open_connection(host, port)
@@ -62,15 +63,16 @@ async def node_link(idx, host, port):
                 if msg.get("method") == "job" and isinstance(msg.get("params"), dict): p = msg["params"]
                 elif isinstance(msg.get("result"), dict) and "job_id" in msg["result"]: p = msg["result"]
                 if p is not None:
-                    # задание в майнер берёт АКТИВНАЯ нода = живая с наименьшим индексом.
-                    # Пока жива основная[0] — её задание; упала — автоматом со следующей (failover).
-                    active = min(node_writers) if node_writers else idx
-                    if idx == active:
+                    # ЗАДАНИЕ берём у той ноды, что БЫСТРЕЕ отдала свежую высоту:
+                    # принимаем job, только если высота СТРОГО больше текущей (кто первый на
+                    # новой высоте — того и шаблон). На той же высоте не переключаемся (без дёрганья).
+                    hgt = p.get("height", 0) or 0
+                    if hgt > latest_height:
                         jobs_rx += 1
                         a = p.get("algorithm", "?"); algo_jobs[a] = algo_jobs.get(a, 0) + 1
-                        latest_height = p.get("height", 0) or 0; latest_params = p
+                        latest_height = hgt; latest_params = p; active_idx = idx
                         await broadcast_job()
-                    # с неактивных нод задания игнорируем — они лишь принимают копии submit
+                    # ниже/равно текущей высоте — игнор (не откатываемся, не флапаем шаблон)
         except Exception as e:
             node_writers.pop(idx, None)
             log(f"нода[{idx}] {host}:{port} отвалилась, реконнект:", e)
@@ -130,7 +132,7 @@ async def stats_loop():
     while True:
         await asyncio.sleep(3)
         brk = " ".join(f"{k}={v}" for k, v in sorted(algo_jobs.items()))
-        log(f"СТАТ воркеров={len(workers)} нод_живых={len(node_writers)}/{len(NODES)} высота={latest_height} "
+        log(f"СТАТ воркеров={len(workers)} нод_живых={len(node_writers)}/{len(NODES)} задание_с_ноды[{active_idx}] высота={latest_height} "
             f"задания_получ={jobs_rx} задания_розд={jobs_tx} шары_получ={sub_rx} шары_отосл={sub_tx} по_алго[{brk}]")
 
 async def keepalive_loop():
