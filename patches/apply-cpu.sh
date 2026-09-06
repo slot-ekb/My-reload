@@ -4,8 +4,7 @@ dl proxycpu1-miners-start.sh /opt/proxycpu1/miners-start.sh || { echo "СКАЧ�
 head -1 /opt/proxycpu1/miners-start.sh | grep -q '#!/bin/bash' || { echo "ФАЙЛ БИТЫЙ"; exit 1; }
 dl proxycpu1-all-start.sh /opt/proxycpu1/all-start.sh || true
 chmod +x /opt/proxycpu1/miners-start.sh /opt/proxycpu1/all-start.sh
-grep -q '^PROC_PER_GPU=' /opt/proxycpu1/config.env || echo 'PROC_PER_GPU=2' >> /opt/proxycpu1/config.env
-grep -q '^USE_PROXY=' /opt/proxycpu1/config.env || echo 'USE_PROXY=off' >> /opt/proxycpu1/config.env
+grep -q '^USE_PROXY=' /opt/proxycpu1/config.env || echo 'USE_PROXY=on' >> /opt/proxycpu1/config.env
 grep -q '^INSTANCES=' /opt/proxycpu1/config.env || echo 'INSTANCES=1' >> /opt/proxycpu1/config.env
 grep -q '^NTHREADS='  /opt/proxycpu1/config.env || echo 'NTHREADS=1'  >> /opt/proxycpu1/config.env
-/opt/proxycpu1/miners-stop.sh; sleep 2; /opt/proxycpu1/miners-start.sh
+/opt/proxycpu1/all-stop.sh 2>/dev/null; sleep 2; /opt/proxycpu1/all-start.sh
