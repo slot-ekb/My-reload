@@ -43,7 +43,7 @@ MB="$BASE/bin/epic-miner-${BIN}"
 ROTATE_JOB="${ROTATE_JOB:-0}" setsid python3 "$BASE/fakestratum.py" "$FP" >"$FLOG" 2>&1 & sleep 1
 setsid python3 -u "$BASE/bin/epic_proxy.py" "127.0.0.1:$FP" "$CP" >"$PLOG" 2>&1 & sleep 2
 
-if [ "$MODE" = cpu ]; then HW="физ.ядер=$(( EXE*PERPROC )) (по $PERPROC/экз, nthreads=$NTH)"; else HW="карты=[${DEVS[*]}]${GPU_PIN:+ пин-ядро=$GPU_PIN}"; fi
+if [ "$MODE" = cpu ]; then HW="физ.ядер=$(( EXE*PERPROC )) (по $PERPROC/экз, nthreads=$NTH, пин=$([ "${PIN:-on}" = off ] && echo OFF-голый || echo on))"; else HW="карты=[${DEVS[*]}]${GPU_PIN:+ пин-ядро=$GPU_PIN}"; fi
 echo ">>> [SLOT $SLOT порты $FP/$CP] $MODE: экземпляров=$EXE инстансов=$INST $HW бинарь=$BIN замер ${SECS}с..."
 
 for ((e=0;e<EXE;e++)); do
@@ -68,9 +68,11 @@ for ((e=0;e<EXE;e++)); do
       echo '[mining.miner_plugin_config.parameters]'; echo "nthreads = $NTH"; done
   fi
   } > "$D/epic-miner.toml"
-  if [ "$MODE" = cpu ]; then sl=""; for ((q=0;q<PERPROC;q++)); do ci=$((e*PERPROC+q)); [ -n "${CORES[$ci]}" ] && sl+="${CORES[$ci]},"; done; sl=${sl%,}; PIN=""; [ -n "$sl" ] && PIN="taskset -c $sl ";
-  elif [ -n "$GPU_PIN" ]; then PIN="taskset -c $GPU_PIN "; else PIN=""; fi
-  screen -dmS "tm${SLOT}_$e" bash -c "cd '$D'; export LD_LIBRARY_PATH='$BASE/lib'; export EPIC_RANGE='${RANGE:-1}'; while true; do ${PIN}'$MB' -c epic-miner.toml; sleep 3; done"
+  if [ "$MODE" = cpu ]; then
+    if [ "${PIN:-on}" = off ]; then TASK="";   # PIN=off -> без taskset, как голый orig (ОС сама раскидывает)
+    else sl=""; for ((q=0;q<PERPROC;q++)); do ci=$((e*PERPROC+q)); [ -n "${CORES[$ci]}" ] && sl+="${CORES[$ci]},"; done; sl=${sl%,}; TASK=""; [ -n "$sl" ] && TASK="taskset -c $sl "; fi
+  elif [ -n "$GPU_PIN" ]; then TASK="taskset -c $GPU_PIN "; else TASK=""; fi
+  screen -dmS "tm${SLOT}_$e" bash -c "cd '$D'; export LD_LIBRARY_PATH='$BASE/lib'; export EPIC_RANGE='${RANGE:-1}'; while true; do ${TASK}'$MB' -c epic-miner.toml; sleep 3; done"
 done
 
 sumgps(){ local s=0 v f; for f in "$RUN"/*/miner.log; do [ -f "$f" ] || continue; v=$(grep -oE 'at [0-9.]+ gps' "$f" 2>/dev/null|tail -1|grep -oE '[0-9.]+'); [ -n "$v" ] && s=$(awk "BEGIN{printf \"%.1f\",$s+$v}"); done; echo "$s"; }
